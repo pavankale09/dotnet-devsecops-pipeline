@@ -40,9 +40,9 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv("${SONARQUBE}") {
-                    sh 'dotnet sonarscanner begin /k:"dotnet-devsecops" /d:sonar.login=$SONAR_AUTH_TOKEN'
+                    sh 'dotnet sonarscanner begin /k:"devesecops-dotnet" /d:sonar.login=squ_620aa3b7c4180ff14a891831c2d78ac639fc5c13
                     sh 'dotnet build'
-                    sh 'dotnet sonarscanner end /d:sonar.login=$SONAR_AUTH_TOKEN'
+                    sh 'dotnet sonarscanner end /d:sonar.login=squ_620aa3b7c4180ff14a891831c2d78ac639fc5c13
                 }
             }
         }
