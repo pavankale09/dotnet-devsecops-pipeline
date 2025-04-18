@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="../build/dotnet-devsecops-sample.props" />
+</Project>
