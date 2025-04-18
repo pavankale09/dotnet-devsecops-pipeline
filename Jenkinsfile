@@ -2,8 +2,10 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "kpavan09/dotnet-devsecops-pipeline"
-        SONARQUBE = "SonarQube"
+        SONAR_TOKEN = "squ_620aa3b7c4180ff14a891831c2d78ac639fc5c13"
+        DOCKER_IMAGE = "kpavan09/devsecops-dotnet-app:latest"
+        DOCKER_USERNAME = "kpavan09"
+        DOCKER_PASSWORD = "Pavan@0910" // ⚠️ Replace this or use Jenkins Credentials instead
     }
 
     stages {
@@ -39,30 +41,46 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv("${SONARQUBE}") {
-                    sh 'dotnet sonarscanner begin /k:"devesecops-dotnet" /d:sonar.login=squ_620aa3b7c4180ff14a891831c2d78ac639fc5c13
-                    sh 'dotnet build'
-                    sh 'dotnet sonarscanner end /d:sonar.login=squ_620aa3b7c4180ff14a891831c2d78ac639fc5c13
+                withSonarQubeEnv('SonarQube') {
+                    sh """
+                        dotnet sonarscanner begin /k:"dotnet-devsecops" /d:sonar.login=${SONAR_TOKEN}
+                        dotnet build
+                        dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}
+                    """
                 }
             }
         }
 
         stage('Docker Build & Push') {
+            when {
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
             steps {
-                sh 'docker build -t $IMAGE_NAME .'
-                withCredentials([string(credentialsId: 'dockerhub-pass', variable: 'DOCKER_PASSWORD')]) {
-                    sh '''
-                    echo $DOCKER_PASSWORD | docker login -u your-dockerhub-username --password-stdin
-                    docker push $IMAGE_NAME
-                    '''
-                }
+                sh """
+                    docker build -t $DOCKER_IMAGE .
+                    echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                    docker push $DOCKER_IMAGE
+                """
             }
         }
 
         stage('Deploy to Kubernetes') {
-            steps {
-                sh 'kubectl apply -f k8s-deployment.yaml'
+            when {
+                expression { currentBuild.currentResult == 'SUCCESS' }
             }
+            steps {
+                sh 'kubectl apply -f k8s/deployment.yaml'
+                sh 'kubectl apply -f k8s/service.yaml'
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo "Pipeline failed! Please check logs and fix the issue."
+        }
+        success {
+            echo "Pipeline completed successfully 🚀"
         }
     }
 }
