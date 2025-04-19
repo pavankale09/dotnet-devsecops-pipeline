@@ -68,10 +68,4 @@ pipeline {
             }
         }
 
-        /* stage('Deploy to AWS EC2 (Optional)') {
-            when {
-                expression { return env.EC2_IP && env.SSH_KEY }
-            }
-            steps {
-                sshagent (credentials: ['ec2-
-
+        
