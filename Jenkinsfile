@@ -7,6 +7,7 @@ pipeline {
     }
 
     stages {
+
         stage('Clone Repository') {
             steps {
                 git 'https://github.com/pavankale09/dotnet-devsecops-pipeline.git'
@@ -21,27 +22,33 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Check Dockerfile Exists') {
             steps {
                 script {
-                    // Check if Dockerfile exists in root
                     if (!fileExists('Dockerfile')) {
-                        error "Dockerfile not found! Please add it to the root of the repo."
+                        error "❌ Dockerfile not found! Please add a Dockerfile at the root of your repository."
                     }
-                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
                 }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
             }
         }
 
         stage('Scan Docker Image with Trivy') {
             steps {
                 sh '''
-                if ! command -v trivy &> /dev/null; then
-                    echo "Installing Trivy..."
+                if ! command -v trivy &> /dev/null
+                then
+                    echo "🔧 Installing Trivy..."
                     curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
                 fi
 
-                trivy image --severity HIGH,CRITICAL --exit-code 0 --format table ${IMAGE_NAME}:${IMAGE_TAG}
+                echo "🔍 Scanning Docker image with Trivy..."
+                trivy image --severity HIGH,CRITICAL --exit-code 0 --format table $IMAGE_NAME:$IMAGE_TAG
                 '''
             }
         }
@@ -53,8 +60,9 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
+                    echo "🔐 Logging in to Docker Hub..."
                     echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                    docker push $IMAGE_NAME:$IMAGE_TAG
                     '''
                 }
             }
@@ -65,23 +73,5 @@ pipeline {
                 expression { return env.EC2_IP && env.SSH_KEY }
             }
             steps {
-                sshagent (credentials: ['ec2-ssh-key']) {
-                    sh '''
-                    ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP << EOF
-                    docker pull ${IMAGE_NAME}:${IMAGE_TAG}
-                    docker stop dotnetapp || true
-                    docker rm dotnetapp || true
-                    docker run -d --name dotnetapp -p 80:80 ${IMAGE_NAME}:${IMAGE_TAG}
-                    EOF
-                    '''
-                }
-            }
-        }
-    }
+                sshagent (credentials: ['ec2-
 
-    post {
-        always {
-            echo "✅ Pipeline completed."
-        }
-    }
-}
