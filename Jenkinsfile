@@ -39,18 +39,7 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh """
-                        dotnet sonarscanner begin /k:"dotnet-devsecops" /d:sonar.login=${SONAR_TOKEN}
-                        dotnet build
-                        dotnet sonarscanner end /d:sonar.login=${SONAR_TOKEN}
-                    """
-                }
-            }
-        }
-
+      
         stage('Docker Build & Push') {
             when {
                 expression { currentBuild.currentResult == 'SUCCESS' }
