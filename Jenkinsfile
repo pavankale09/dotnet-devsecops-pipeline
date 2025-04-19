@@ -24,8 +24,11 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Switch to BuildKit if needed
-                    sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
+                    // Check if Dockerfile exists in root
+                    if (!fileExists('Dockerfile')) {
+                        error "Dockerfile not found! Please add it to the root of the repo."
+                    }
+                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
                 }
             }
         }
@@ -33,13 +36,12 @@ pipeline {
         stage('Scan Docker Image with Trivy') {
             steps {
                 sh '''
-                if ! command -v trivy &> /dev/null
-                then
+                if ! command -v trivy &> /dev/null; then
                     echo "Installing Trivy..."
                     curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
                 fi
 
-                trivy image --severity HIGH,CRITICAL --exit-code 0 --format table $IMAGE_NAME:$IMAGE_TAG
+                trivy image --severity HIGH,CRITICAL --exit-code 0 --format table ${IMAGE_NAME}:${IMAGE_TAG}
                 '''
             }
         }
@@ -52,7 +54,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
                     echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                    docker push $IMAGE_NAME:$IMAGE_TAG
+                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
                     '''
                 }
             }
@@ -66,10 +68,10 @@ pipeline {
                 sshagent (credentials: ['ec2-ssh-key']) {
                     sh '''
                     ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP << EOF
-                    docker pull $IMAGE_NAME:$IMAGE_TAG
+                    docker pull ${IMAGE_NAME}:${IMAGE_TAG}
                     docker stop dotnetapp || true
                     docker rm dotnetapp || true
-                    docker run -d --name dotnetapp -p 80:80 $IMAGE_NAME:$IMAGE_TAG
+                    docker run -d --name dotnetapp -p 80:80 ${IMAGE_NAME}:${IMAGE_TAG}
                     EOF
                     '''
                 }
@@ -79,7 +81,7 @@ pipeline {
 
     post {
         always {
-            echo "Pipeline completed."
+            echo "✅ Pipeline completed."
         }
     }
 }
