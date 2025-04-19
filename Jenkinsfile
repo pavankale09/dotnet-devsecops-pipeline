@@ -7,7 +7,8 @@ pipeline {
         DOCKER_USERNAME = "kpavan09"
         DOCKER_PASSWORD = "Pavan@0910" // ⚠️ Replace this or use Jenkins Credentials instead
     }
-
+    
+    }
     stages {
         stage('Checkout') {
             steps {
@@ -21,10 +22,11 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build Docker Image') {
             steps {
-                sh 'dotnet build --no-restore'
-            }
+                dir('dotnet-devsecops-pipeline') {
+                    sh 'docker build -t ${DOCKER_IMAGE} .'
+                }
         }
 
         stage('Test') {
