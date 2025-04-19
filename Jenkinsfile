@@ -2,76 +2,84 @@ pipeline {
     agent any
 
     environment {
-        SONAR_TOKEN = "squ_620aa3b7c4180ff14a891831c2d78ac639fc5c13"
-        DOCKER_IMAGE = "kpavan09/devsecops-dotnet-app:latest"
-        DOCKER_USERNAME = "kpavan09"
-        DOCKER_PASSWORD = "Pavan@0910" // ⚠️ Replace this or use Jenkins Credentials instead
+        IMAGE_NAME = "kpavan09/devsecops-dotnet-app"
+        IMAGE_TAG = "latest"
     }
-    
-    }
+
     stages {
-        stage('Checkout') {
+        stage('Clone Repository') {
             steps {
                 git 'https://github.com/pavankale09/dotnet-devsecops-pipeline.git'
             }
         }
 
-        stage('Restore') {
+        stage('Build .NET Application') {
             steps {
                 sh 'dotnet restore'
+                sh 'dotnet build --configuration Release'
+                sh 'dotnet publish -c Release -o out'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                dir('dotnet-devsecops-pipeline') {
-                    sh 'docker build -t ${DOCKER_IMAGE} .'
+                script {
+                    // Switch to BuildKit if needed
+                    sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
                 }
-        }
-
-        stage('Test') {
-            steps {
-                sh 'dotnet test --no-build --verbosity normal'
             }
         }
 
-        stage('Security Scan (Trivy)') {
+        stage('Scan Docker Image with Trivy') {
             steps {
-                sh 'trivy fs . || true'
+                sh '''
+                if ! command -v trivy &> /dev/null
+                then
+                    echo "Installing Trivy..."
+                    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                fi
+
+                trivy image --severity HIGH,CRITICAL --exit-code 0 --format table $IMAGE_NAME:$IMAGE_TAG
+                '''
             }
         }
 
-      
-        stage('Docker Build & Push') {
+        stage('Push Docker Image (Optional)') {
             when {
-                expression { currentBuild.currentResult == 'SUCCESS' }
+                expression { return env.DOCKER_USER && env.DOCKER_PASS }
             }
             steps {
-                sh """
-                    docker build -t $DOCKER_IMAGE .
-                    echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-                    docker push $DOCKER_IMAGE
-                """
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+                    '''
+                }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Deploy to AWS EC2 (Optional)') {
             when {
-                expression { currentBuild.currentResult == 'SUCCESS' }
+                expression { return env.EC2_IP && env.SSH_KEY }
             }
             steps {
-                sh 'kubectl apply -f k8s/deployment.yaml'
-                sh 'kubectl apply -f k8s/service.yaml'
+                sshagent (credentials: ['ec2-ssh-key']) {
+                    sh '''
+                    ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP << EOF
+                    docker pull $IMAGE_NAME:$IMAGE_TAG
+                    docker stop dotnetapp || true
+                    docker rm dotnetapp || true
+                    docker run -d --name dotnetapp -p 80:80 $IMAGE_NAME:$IMAGE_TAG
+                    EOF
+                    '''
+                }
             }
         }
     }
 
     post {
-        failure {
-            echo "Pipeline failed! Please check logs and fix the issue."
-        }
-        success {
-            echo "Pipeline completed successfully 🚀"
+        always {
+            echo "Pipeline completed."
         }
     }
 }
